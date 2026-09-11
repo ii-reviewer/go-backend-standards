@@ -33,3 +33,21 @@ that linters were not run and why.
 
 Every expected outcome in `scenarios.md` holds. No wording changes needed after the first GREEN
 run.
+
+## PR #1 check (2026-09-11)
+
+PR #1 "Refine Go backend guidance" rewrote defaults as preferences with exceptions and removed
+`docs/specs`. Scenario A against the PR branch as submitted regressed three rows: statistics
+scan went back to keyset over a gRPC stream, the outbox started unpartitioned "until volume
+proves the need", normalization stopped at 3NF; the infra questions added "Redis fine, same
+cache-aside". The technical corrections in the PR (Go 1.23 timers, `WaitGroup.Go`, `b.Loop`,
+`EXPLAIN ANALYZE` executes, singleflight scope, ordering under `SKIP LOCKED`, partitioned
+uniqueness, cache fill/delete race) were correct and kept.
+
+After restoring the hard defaults on the same branch (commit "Keep hard defaults while adopting
+the correctness fixes"), both scenarios pass again: scenario A gives `limit`/`offset` inside one
+`REPEATABLE READ` transaction for the statistics scan, quarterly outbox partitions in the first
+migration, decimal money, memcached, inbox per consumer, testcontainers and `billing-autotests`;
+scenario B keeps every stance at its severity and the agent ran `golangci-lint` with the skill
+config on its own. Lesson recorded: an exception clause on a default row reopens the choice the
+baseline got wrong; state exceptions as conditions on observable facts, never as "also valid".
