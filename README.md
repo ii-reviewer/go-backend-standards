@@ -21,19 +21,19 @@ Claude Code picks it up on the next session. For one project only, clone into
 
 | File | Purpose |
 |---|---|
-| `SKILL.md` | entry point: hard defaults table and which reference to read for which task |
+| `SKILL.md` | entry point: correctness requirements, owner defaults and which reference to read for which task |
 | `go-review.md` | judgment-call checklist distilled from "100 Go Mistakes"; linters cover the rest |
 | `service-design.md` | infra discovery, contracts, outbox/inbox, idempotency, Kafka, gRPC, media |
-| `data-design.md` | Postgres vs Mongo, 5NF, indexes and `EXPLAIN ANALYZE`, partitioning, goose, cache |
+| `data-design.md` | Postgres vs Mongo, normalization, indexes and `EXPLAIN ANALYZE`, partitioning, goose, cache |
 | `testing.md` | spec first, TDD, testcontainers, autotests repo |
 | `golangci.yml` | golangci-lint v2 config automating the mechanical half of the 100 mistakes |
-| `docs/specs/` | design of the skill, baseline results, and test scenarios |
 
 Copy `golangci.yml` into a service repo as `.golangci.yml`.
 
-## Changing the skill
+## Maintaining the skill
 
-Skills are tested like code. Before editing guidance, run the scenarios in
-`docs/specs/scenarios.md` with a fresh subagent and without the change, record what it does,
-then edit, then run again. `docs/specs/baseline.md` holds the recorded behaviour without the
-skill; append new baselines there.
+Validate the reusable linter configuration with `golangci-lint config verify --config golangci.yml`.
+For guidance changes, compare behavior on realistic tasks before and after the change using an
+isolated workspace. Check correctness, missed defects, false positives, unnecessary architecture,
+and preservation of project choices; matching library names alone is not a correctness measure.
+Keep evaluation runs, reports, test projects and generated artifacts outside this repository.

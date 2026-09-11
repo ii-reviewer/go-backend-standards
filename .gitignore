@@ -1,0 +1,9 @@
+# Local working material is not part of the distributed skill.
+/.work/
+/artifacts/
+/output/
+/tmp/
+/docs/specs/
+/examples/
+*.test
+__pycache__/
