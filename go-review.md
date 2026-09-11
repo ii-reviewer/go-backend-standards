@@ -1,23 +1,35 @@
 # Go code review
 
 Linters in `golangci.yml` catch the mechanical mistakes: unchecked errors, `%v` wrapping,
-unclosed bodies, lost `cancel`, shadowing, fat interfaces, mixed receivers, `time.After` in
-loops, requests without context. Run them first. Review the judgment calls below by hand.
+unclosed bodies, lost `cancel`, shadowing, fat interfaces, mixed receivers, requests without context. Run them first. Review the judgment calls below by hand.
 Numbers refer to chapters of "100 Go Mistakes and How to Avoid Them".
+
+## Severity
+
+A finding names the triggering condition, the observable impact, the evidence in the diff, and
+a concrete fix. Blocker: a demonstrated path to severe harm (double charging, data loss, a
+security breach). Major: a material correctness or reliability defect. Minor: a bounded
+maintainability issue. Nit: optional polish. Missing context becomes a question or an explicitly
+conditional finding. A deviation from an owner default without a failure mode is labelled
+`Convention` and listed after the correctness findings; an established project choice gets a
+`Convention` note, and a migration recommendation only when the task asks for one.
 
 ## Stances
 
-These decide severity regardless of what the linter says.
-
-- `float64` or `int64` for money is a Blocker. Fix names `shopspring/decimal` and the currency field.
-- A side effect after a database write (notify, publish, email) started from a goroutine is a
-  Blocker. Fix names the outbox table.
-- An external call that can be retried without an idempotency key is a Blocker.
-- A change to a repository or adapter without a testcontainers test is a Major.
-- An in-process map used as a cache is a Major when the service runs more than one replica.
-  Fix names distributed memcached.
-- An interface declared next to its implementation with one implementer is a Minor; interfaces
-  live on the consumer side.
+- Money as `float64` is a Blocker; the fix names `shopspring/decimal` and the currency field.
+  Money as checked `int64` minor units is a `Convention` finding recommending decimal.
+- A required side effect after a database write (notify, publish, email) started from a
+  goroutine is a Blocker; the fix names the outbox table. Best-effort telemetry may use an owned
+  goroutine.
+- A retriable external call with a non-idempotent effect and no idempotency key is a Blocker;
+  the fix names the provider's key or a reconciliation path. Reads need no key.
+- A change to a DB or broker adapter without a testcontainers test is a Major. Pure mapping code
+  and HTTP transport use unit tests and `httptest`.
+- An in-process map used as a cache for shared mutable data is a Major when the service runs
+  more than one replica; the fix names distributed memcached. An immutable or versioned local
+  cache is correct across replicas.
+- An interface declared next to its only implementation is a Minor; interfaces live on the
+  consumer side with 1–3 methods.
 
 ## Organization (1–17)
 
@@ -36,8 +48,10 @@ These decide severity regardless of what the linter says.
   or copy.
 - Preallocate with `make([]T, 0, n)` when `n` is known.
 - Return nil for "nothing"; encode `[]` only where the JSON contract requires it.
-- Maps never shrink; a hot map with churn holds pointers or gets recreated.
-- Comparing structs that hold slices or maps needs an `Equal` method, not `==` or `reflect.DeepEqual`.
+- Do not rely on map deletion to release backing capacity. Measure churn and retained memory;
+  rebuild or bound the map if needed. Pointer values do not shrink its backing allocation.
+- Structs containing slices/maps cannot use `==`; choose domain equality, `slices.Equal`,
+  `maps.Equal`, or an appropriate deep comparison, including explicit nil/empty semantics.
 
 ## Control flow (30–35)
 
@@ -49,13 +63,14 @@ These decide severity regardless of what the linter says.
 
 ## Strings (36–41)
 
-- Length and indexing are bytes; iterate runes when characters matter.
+- Length and indexing are bytes; iterate runes for Unicode code points; user-perceived characters may span multiple runes.
 - `strings.Builder` for loops, `TrimPrefix` vs `TrimLeft`, and copy a substring you keep from
   a large string.
 
 ## Functions and methods (42–48)
 
-- Pointer receiver when the method mutates, or the type holds a mutex or is large; never mixed.
+- Pointer receiver when the method mutates, or the type holds a mutex or is large; prefer
+  consistent receivers, but assess method sets and intentional exceptions before reporting a defect.
 - Named results only when they add meaning or a deferred function must modify them.
 - A nil pointer returned as an interface is not nil.
 - `defer` evaluates its arguments immediately; wrap in a closure for late binding.
@@ -74,10 +89,11 @@ These decide severity regardless of what the linter says.
 ## Concurrency (55–75)
 
 - Every goroutine has an owner that knows when it stops: context, `errgroup`, or a done channel.
-- `context.Context` is the first parameter and is never stored in a struct.
+- Pass request-scoped `context.Context` first; avoid storing it in a long-lived struct.
+  Assess compatibility wrappers or explicit task-lifetime objects by their actual lifetime.
 - Unbuffered channels by default; a buffer size comes with a reason (worker pool, batch size).
 - `chan struct{}` for signals; close to broadcast.
-- `wg.Add` before `go`, not inside the goroutine.
+- For explicit `WaitGroup.Add`, call it before `go`; `WaitGroup.Go` is available from Go 1.25.
 - `errgroup` for fan-out with cancellation.
 - Sync types are never copied: pointer receivers, no struct copies, no passing by value.
 - Slices and maps shared between goroutines are guarded by a mutex; an append-only cache may
@@ -87,13 +103,20 @@ These decide severity regardless of what the linter says.
 ## Standard library (75–84)
 
 - `time.Duration` arguments: `time.Sleep(100)` is 100ns.
-- `time.After` in a loop leaks until it fires; use `time.NewTimer` with `Stop` or a `Ticker`.
+- Check the target Go version and timer mode. With Go 1.23+ timer semantics, GC can recover
+  unreferenced timers: `time.After` in a loop is not by itself a leak. Older semantics (including
+  `GODEBUG=asynctimerchan=1`) retain timers until firing. Reuse timers for measured allocation
+  pressure; distinguish an idle timeout from a total deadline or periodic tick.
 - JSON: embedded types hijack marshalling, `time.Time` monotonic readings break `==`,
   numbers into `any` become `float64`; use typed structs or `json.Number`.
 - `database/sql`: `sql.Open` does not connect, call `PingContext`; set `SetMaxOpenConns`,
   `SetMaxIdleConns`, `SetConnMaxLifetime`; nullable columns are `sql.NullX` or pointers;
   always `rows.Close()` and `rows.Err()`.
-- `http.Client` and `http.Server` need explicit timeouts; `return` after `http.Error`.
+- Bound HTTP operations with appropriate client/server timeouts or request deadlines; account
+  for long-lived streaming. A zero client-wide timeout is not a defect if deadlines bound calls.
+  `return` after `http.Error`. Translate internal/driver/provider errors to the public error
+  contract; do not expose raw `err.Error()` to clients. Handle response encoding/write errors
+  without attempting a second response after headers/body have already been sent.
 - Close the body, the file, the rows; check the error on writes.
 
 ## Testing (82–90)
@@ -102,7 +125,8 @@ These decide severity regardless of what the linter says.
 - `-race` and `-shuffle=on` always; `t.Parallel()` where the test is isolated.
 - Table-driven tests; synchronization instead of sleeps; an injected clock for time; `httptest`
   for HTTP.
-- Benchmarks reset the timer and sink results so the compiler keeps the work.
+- For Go 1.24+, prefer `for b.Loop()` where applicable; otherwise reset setup time and keep
+  observable results so the compiler cannot remove the measured work.
 
 ## Optimization (91–100)
 
@@ -112,5 +136,9 @@ These decide severity regardless of what the linter says.
 - In containers, Go before 1.25 needs `GOMAXPROCS` set to the CPU quota (`uber-go/automaxprocs`);
   set `GOMEMLIMIT` to the memory limit minus headroom.
 
-Done when: every stance above is checked against the diff, linters ran or their absence is
+Done when: applicable checks above are assessed against the diff, linters ran or their absence is
 stated, and each finding carries a severity and a concrete fix.
+
+Version references: [time.After](https://pkg.go.dev/time#After),
+[Go 1.23 timer compatibility](https://go.dev/wiki/Go123Timer),
+[WaitGroup.Go](https://pkg.go.dev/sync#WaitGroup.Go), [B.Loop](https://pkg.go.dev/testing#B.Loop).

@@ -22,18 +22,22 @@ Claude Code picks it up on the next session. For one project only, clone into
 | File | Purpose |
 |---|---|
 | `SKILL.md` | entry point: hard defaults table and which reference to read for which task |
-| `go-review.md` | judgment-call checklist distilled from "100 Go Mistakes"; linters cover the rest |
-| `service-design.md` | infra discovery, contracts, outbox/inbox, idempotency, Kafka, gRPC, media |
-| `data-design.md` | Postgres vs Mongo, 5NF, indexes and `EXPLAIN ANALYZE`, partitioning, goose, cache |
-| `testing.md` | spec first, TDD, testcontainers, autotests repo |
+| `go-review.md` | severity rules, owner stances, and the judgment-call checklist distilled from "100 Go Mistakes"; linters cover the rest |
+| `service-design.md` | infra discovery, contracts, outbox/inbox, ordering, idempotency, Kafka, gRPC, media |
+| `data-design.md` | Postgres vs Mongo, normalization, indexes and `EXPLAIN ANALYZE`, partitioning, goose, cache |
+| `testing.md` | spec first, TDD, testcontainers, failure scenarios, autotests repo |
 | `golangci.yml` | golangci-lint v2 config automating the mechanical half of the 100 mistakes |
-| `docs/specs/` | design of the skill, baseline results, and test scenarios |
+| `docs/specs/` | design of the skill, test scenarios, and recorded runs without and with the skill |
 
 Copy `golangci.yml` into a service repo as `.golangci.yml`.
 
-## Changing the skill
+## Maintaining the skill
 
-Skills are tested like code. Before editing guidance, run the scenarios in
-`docs/specs/scenarios.md` with a fresh subagent and without the change, record what it does,
-then edit, then run again. `docs/specs/baseline.md` holds the recorded behaviour without the
-skill; append new baselines there.
+- Validate the linter config with `golangci-lint config verify --config golangci.yml`.
+- Guidance changes are tested like code: run the scenarios in `docs/specs/scenarios.md` with a
+  fresh subagent before the change and after it, and compare the choices against the hard
+  defaults table. `docs/specs/baseline.md` and `docs/specs/green.md` hold the recorded runs.
+- Judge a run on correctness, missed defects, false positives, and preserved project choices;
+  a matching library name alone is not a pass.
+- Evaluation workspaces, generated artifacts, and test projects stay outside this repository
+  (see `.gitignore`).

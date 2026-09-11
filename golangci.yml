@@ -1,5 +1,6 @@
 # Mechanical half of "100 Go Mistakes". Copy to a repo root as .golangci.yml.
-# Requires golangci-lint v2.
+# Verified with golangci-lint v2.13.2 and Go 1.27.
+# Diagnostic severity still requires review context; style rules express owner conventions.
 version: "2"
 
 run:
