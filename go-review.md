@@ -4,25 +4,32 @@ Linters in `golangci.yml` catch the mechanical mistakes: unchecked errors, `%v` 
 unclosed bodies, lost `cancel`, shadowing, fat interfaces, mixed receivers, requests without context. Run them first. Review the judgment calls below by hand.
 Numbers refer to chapters of "100 Go Mistakes and How to Avoid Them".
 
-## Severity and owner conventions
+## Severity
 
-A finding names the triggering condition, observable impact, evidence in the diff, and a
-concrete fix. Use Blocker for a demonstrated path to severe harm (such as double charging,
-data loss, or a security breach), Major for material correctness/reliability defects, Minor
-for bounded maintainability issues, and Nit for optional polish. Missing context is a question
-or an explicitly conditional finding, not a proven defect. Do not invent findings to fill a quota.
+A finding names the triggering condition, the observable impact, the evidence in the diff, and
+a concrete fix. Blocker: a demonstrated path to severe harm (double charging, data loss, a
+security breach). Major: a material correctness or reliability defect. Minor: a bounded
+maintainability issue. Nit: optional polish. Missing context becomes a question or an explicitly
+conditional finding. A deviation from an owner default without a failure mode is labelled
+`Convention` and listed after the correctness findings; an established project choice gets a
+`Convention` note, and a migration recommendation only when the task asks for one.
 
-| Concern | Correctness check | Owner default / valid exception |
-|---|---|---|
-| Money | exact representation, currency, checked range, defined rounding and scale conversions | prefer `shopspring/decimal`; checked `int64` minor units with explicit scale/currency are valid; decimal alone does not prevent rounding bugs |
-| Async side effects | can a committed change lose a required effect, or can retries repeat it? | outbox for durable effects; best-effort telemetry can use an owned goroutine |
-| External calls | can retry after an ambiguous result repeat a non-idempotent effect? | use the provider's supported key; natural idempotency or reconciliation may be needed; GET does not need a key |
-| Tests | is changed behavior covered at the boundary where it can fail? | testcontainers for DB/broker behavior; pure adapter mapping can use unit tests, HTTP can use `httptest` |
-| Cache | races, stale-data impact, invalidation and memory bounds | prefer distributed memcached for shared mutable data; immutable/versioned local caches can be correct across replicas |
-| Interfaces | does placement couple consumers or expose unnecessary methods? | consumer-owned, small interfaces; implementation count alone is not a defect |
+## Stances
 
-Label a preference-only deviation as `Convention`, separately from correctness findings.
-Preserve documented project choices; recommend migration only when the task or evidence warrants it.
+- Money as `float64` is a Blocker; the fix names `shopspring/decimal` and the currency field.
+  Money as checked `int64` minor units is a `Convention` finding recommending decimal.
+- A required side effect after a database write (notify, publish, email) started from a
+  goroutine is a Blocker; the fix names the outbox table. Best-effort telemetry may use an owned
+  goroutine.
+- A retriable external call with a non-idempotent effect and no idempotency key is a Blocker;
+  the fix names the provider's key or a reconciliation path. Reads need no key.
+- A change to a DB or broker adapter without a testcontainers test is a Major. Pure mapping code
+  and HTTP transport use unit tests and `httptest`.
+- An in-process map used as a cache for shared mutable data is a Major when the service runs
+  more than one replica; the fix names distributed memcached. An immutable or versioned local
+  cache is correct across replicas.
+- An interface declared next to its only implementation is a Minor; interfaces live on the
+  consumer side with 1–3 methods.
 
 ## Organization (1–17)
 

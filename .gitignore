@@ -3,7 +3,6 @@
 /artifacts/
 /output/
 /tmp/
-/docs/specs/
 /examples/
 *.test
 __pycache__/

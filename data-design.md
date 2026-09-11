@@ -5,20 +5,20 @@
 | Data | Store |
 |---|---|
 | entities with relations, transactions, reporting | Postgres |
-| document-shaped records whose access patterns/operational needs justify a document store | MongoDB; compare with Postgres JSONB first |
-| both inside one service | justify the second store; define ownership and cross-store consistency |
+| document-shaped records with per-record schema and no joins | MongoDB |
+| both inside one service | Postgres owns the relational core; Mongo holds only the document part; cross-store consistency is stated |
 
 Done when: each aggregate has exactly one owning store.
 
 ## 2. Postgres schema
 
-- Start with explicit keys and functional dependencies, usually 3NF/BCNF. Check 4NF for
-  independent multivalued facts and 5NF for nontrivial join dependencies; the usual "whole key"
-  mnemonic is not a definition of 5NF. Decompose only with a lossless reconstruction argument.
-  Document deliberate denormalization and how its copies stay consistent.
+- Normalize to 5NF: model keys and functional dependencies (3NF/BCNF), then split independent
+  multivalued facts (4NF) and nontrivial join dependencies (5NF), each split with a lossless-join
+  argument; the "whole key" mnemonic covers only 3NF/BCNF. Denormalized read models live in
+  separate tables fed from the normalized source, with the refresh path documented.
 - Types: `uuid` ids generated app-side as UUIDv7; `timestamptz` everywhere; money as
-  `NUMERIC(19,4)` with a `char(3)` currency column by default (validate required range/scale,
-  currency and rounding; checked integer minor units are valid for suitable domains); statuses
+  `NUMERIC(19,4)` with a `char(3)` currency column, with range, scale, and rounding defined at
+  the domain boundary; statuses
   as `text` with a CHECK or a lookup table; `jsonb` for opaque payloads or justified document
   access patterns with explicit validation and indexes.
 - Constraints in the database: NOT NULL, CHECK, FK, UNIQUE. Application validation adds to
@@ -30,27 +30,26 @@ its constraints.
 
 ## 3. Indexes and query review
 
-- Review query access paths; capture `EXPLAIN (ANALYZE, BUFFERS)` for new or materially changed
-  nontrivial queries on representative volume. `ANALYZE` executes the statement: run mutating
-  queries in disposable test data, not production merely to obtain a plan.
+- Every repository query gets `EXPLAIN (ANALYZE, BUFFERS)` on representative volume before
+  merge; the plan goes into the PR for anything beyond a primary-key lookup. `ANALYZE` executes
+  the statement, so mutating queries run against disposable test data.
 - Index the access paths the plan shows. For B-tree indexes, equality prefixes are a starting
   point; choose the remaining order from
   filtering, ordering, selectivity and the plan. A range column can prevent a later column from
   satisfying the requested global sort. Partial indexes for queues (`WHERE status = 'pending'`).
   `INCLUDE` columns for hot reads that would otherwise touch the heap.
-- A sequential scan can be optimal for a broad result. Report it as a performance defect only
-  when representative plans/latency show material cost against the request budget.
+- A sequential scan on a large table in a request path is a Major finding; when the plan shows
+  the scan optimal for a broad result, the finding becomes a note with the plan attached.
 - `pg_stat_statements` enabled; top queries by total time reviewed on a schedule.
 
-Done when: changed nontrivial queries have representative plans and each added index has a
-justified access path.
+Done when: each query has a plan and each index has a query that needs it.
 
 ## 4. Partitioning
 
-Use quarterly range partitions when outbox volume and retention justify their operational cost.
-An unpartitioned table with a pending-row index is a valid starting point. Outbox rows are updated
-when published, so active partitions still need vacuum. Drop a partition only after all its events
-are resolved and the replay/audit horizon has expired; age alone is insufficient.
+Outbox and other append-only, time-bounded tables are range-partitioned by quarter from the
+first migration. A quarter is dropped once every event in it is published and the replay/audit
+horizon has passed, so vacuum never chases its dead tuples. Publishing updates rows, so active
+partitions still get vacuumed; the partial index on unpublished rows stays small.
 
 For a partitioned design, the following DDL illustrates retention structure, not a complete relay.
 Generate `event_id` once in the application and preserve it on every retry. The composite key is
@@ -83,8 +82,8 @@ Partitions for the next two quarters are created ahead by a migration or `pg_par
 Business tables partition only when a plan or vacuum lag proves the need; a unique constraint
 on a partitioned table must include the partition key.
 
-Done when: the partitioning choice is justified; if partitioned, creation, safe retention,
-and monitoring for missing partitions/unresolved old events have named owners.
+Done when: the outbox DDL is partitioned, and partition creation, safe retention, and
+monitoring for missing partitions or unresolved old events have named owners.
 
 ## 5. Migrations with goose
 

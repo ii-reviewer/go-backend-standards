@@ -21,19 +21,23 @@ Claude Code picks it up on the next session. For one project only, clone into
 
 | File | Purpose |
 |---|---|
-| `SKILL.md` | entry point: correctness requirements, owner defaults and which reference to read for which task |
-| `go-review.md` | judgment-call checklist distilled from "100 Go Mistakes"; linters cover the rest |
-| `service-design.md` | infra discovery, contracts, outbox/inbox, idempotency, Kafka, gRPC, media |
+| `SKILL.md` | entry point: hard defaults table and which reference to read for which task |
+| `go-review.md` | severity rules, owner stances, and the judgment-call checklist distilled from "100 Go Mistakes"; linters cover the rest |
+| `service-design.md` | infra discovery, contracts, outbox/inbox, ordering, idempotency, Kafka, gRPC, media |
 | `data-design.md` | Postgres vs Mongo, normalization, indexes and `EXPLAIN ANALYZE`, partitioning, goose, cache |
-| `testing.md` | spec first, TDD, testcontainers, autotests repo |
+| `testing.md` | spec first, TDD, testcontainers, failure scenarios, autotests repo |
 | `golangci.yml` | golangci-lint v2 config automating the mechanical half of the 100 mistakes |
+| `docs/specs/` | design of the skill, test scenarios, and recorded runs without and with the skill |
 
 Copy `golangci.yml` into a service repo as `.golangci.yml`.
 
 ## Maintaining the skill
 
-Validate the reusable linter configuration with `golangci-lint config verify --config golangci.yml`.
-For guidance changes, compare behavior on realistic tasks before and after the change using an
-isolated workspace. Check correctness, missed defects, false positives, unnecessary architecture,
-and preservation of project choices; matching library names alone is not a correctness measure.
-Keep evaluation runs, reports, test projects and generated artifacts outside this repository.
+- Validate the linter config with `golangci-lint config verify --config golangci.yml`.
+- Guidance changes are tested like code: run the scenarios in `docs/specs/scenarios.md` with a
+  fresh subagent before the change and after it, and compare the choices against the hard
+  defaults table. `docs/specs/baseline.md` and `docs/specs/green.md` hold the recorded runs.
+- Judge a run on correctness, missed defects, false positives, and preserved project choices;
+  a matching library name alone is not a pass.
+- Evaluation workspaces, generated artifacts, and test projects stay outside this repository
+  (see `.gitignore`).

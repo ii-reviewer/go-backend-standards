@@ -37,7 +37,53 @@ observable contracts without brittle call-order expectations.
   that match the service's compatibility targets; update them deliberately.
 - Ensure transaction rollback happens before canceling its lifetime context. `t.Context()` is
   canceled before `t.Cleanup` callbacks run; cleanup may need its own bounded context.
-- Inspect the target service's Go and infrastructure versions when choosing test APIs and images.
+- Inspect the target service's Go and infrastructure versions when \1
+```go
+//go:build integration
+
+package postgres_test
+
+import (
+	"context"
+	"os"
+	"testing"
+
+	"github.com/pressly/goose/v3"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+)
+
+var dsn string
+
+func TestMain(m *testing.M) {
+	os.Exit(run(m))
+}
+
+func run(m *testing.M) int {
+	ctx := context.Background()
+	pg, err := postgres.Run(ctx, "postgres:17-alpine",
+		postgres.WithDatabase("billing"),
+		postgres.WithUsername("billing"),
+		postgres.WithPassword("billing"),
+		postgres.BasicWaitStrategies(),
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = pg.Terminate(ctx) }()
+	dsn, err = pg.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		panic(err)
+	}
+	db := mustOpen(dsn)
+	defer db.Close()
+	if err := goose.Up(db, "../../../migrations"); err != nil {
+		panic(err)
+	}
+	return m.Run()
+}
+```
+
+Each test opens its own connection from `dsn` and isolates itself as described above.
 
 ## Failure scenarios
 

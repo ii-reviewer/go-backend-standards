@@ -39,17 +39,14 @@ Done when: every interaction in the design names its transport and the infra fac
   `internal/adapter/http`.
 - Batch endpoints wherever a client would otherwise loop: `POST /invoices:batchGet` with a
   bounded id list.
-- Pagination: use a capped limit and a unique, stable sort, usually `(created_at, id)`.
-  A cursor includes the position and binds filters, tenant scope, and sort direction. Use keyset
-  scans for large datasets; offset is acceptable for small lists or frozen datasets.
-- A closed date range is not a snapshot: late inserts, deletions, or sort-key changes can shift
-  offsets. Keyset avoids offset shifting but does not freeze membership or values, and can miss
-  late inserts behind the cursor. A high-water mark alone does not solve those cases.
-- Exact exports: choose one `REPEATABLE READ` snapshot for a bounded, uninterrupted job, or
-  materialize the selected row values into a durable export dataset for crash-resumable jobs.
-  Store dataset id, stable row position, and output checkpoint; make output chunks idempotent.
-  Materializing only IDs is insufficient if values can change or source rows can be deleted.
-  A transaction snapshot cannot be resumed after its owning session/transaction is gone.
+- Pagination:
+  - user-facing lists: cursor on `(created_at, id)`, `limit` capped, `next_cursor` in the
+    response; the cursor binds filters, tenant scope, and sort direction.
+  - statistics, exports, admin scans: `limit`/`offset` with a fixed unique `ORDER BY` over a
+    closed past range; the job resumes from its last offset. Late writes into a closed range
+    shift offsets, so the range starts after the write grace period and a backfill reruns it.
+  - exact snapshot required: run the scan in one `REPEATABLE READ` transaction, or materialize
+    the rows into an export table first; a snapshot cannot be resumed after its transaction ends.
 - Mutations that can repeat a non-idempotent effect need an idempotency key, scoped per caller
   and operation (`Idempotency-Key` header, `idempotency_key` field in proto), unless natural
   idempotency gives the same guarantee. Read-only calls do not need such a key.
